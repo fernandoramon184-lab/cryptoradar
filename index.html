@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CryptoRadar | Buscador cripto</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 20px;
+      background: #0b1120;
+      color: #edf2f7;
+      font-family: Arial, sans-serif;
+    }
+    main { max-width: 1000px; margin: auto; }
+    h1 { color: #5eead4; }
+    .panel {
+      background: #172235;
+      border: 1px solid #2b3b50;
+      padding: 16px;
+      border-radius: 12px;
+      margin: 16px 0;
+    }
+    input, select, button {
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid #43536a;
+      background: #101a2b;
+      color: white;
+      font-size: 15px;
+      max-width: 100%;
+    }
+    input { width: 100%; margin-bottom: 10px; }
+    button { cursor: pointer; background: #0f766e; }
+    .filters { display: grid; gap: 10px; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td {
+      text-align: left;
+      padding: 12px 8px;
+      border-bottom: 1px solid #2b3b50;
+      white-space: nowrap;
+    }
+    th { color: #9fb0c7; font-size: 13px; }
+    .up { color: #5eead4; }
+    .down { color: #fca5a5; }
+    .muted { color: #9fb0c7; font-size: 13px; }
+    a { color: #5eead4; }
+    @media (min-width: 650px) {
+      .filters { grid-template-columns: 2fr 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>◈ CryptoRadar</h1>
+  <p>Encuentra y analiza oportunidades del mercado cripto.</p>
+
+  <section class="panel">
+    <p id="status">Preparando el buscador...</p>
+    <button id="refresh">Actualizar mercado</button>
+    <p class="muted">
+      Datos de CoinGecko. Valores en USD.
+    </p>
+  </section>
+
+  <section class="panel">
+    <div class="filters">
+      <input id="search" placeholder="Buscar moneda: Bitcoin, SOL...">
+      <select id="sort">
+        <option value="market_cap_desc">Mayor capitalización</option>
+        <option value="volume_desc">Mayor volumen</option>
+        <option value="change_desc">Mayor subida 24 h</option>
+        <option value="change_asc">Mayor caída 24 h</option>
+      </select>
+      <select id="minVolume">
+        <option value="0">Todo el volumen</option>
+        <option value="100000">Volumen > $100 mil</option>
+        <option value="1000000">Volumen > $1 millón</option>
+        <option value="10000000">Volumen > $10 millones</option>
+      </select>
+    </div>
+    <p id="count" class="muted"></p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Moneda</th>
+            <th>Precio USD</th>
+            <th>Cambio 24 h</th>
+            <th>Volumen 24 h</th>
+            <th>Capitalización</th>
+          </tr>
+        </thead>
+        <tbody id="coins">
+          <tr><td colspan="5">Cargando datos...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <p class="muted">
+    Este buscador es informativo. Una subida de precio
+    no garantiza beneficios. Verifica cada proyecto antes
+    de tomar decisiones.
+  </p>
+</main>
+
+<script>
+const endpoint =
+  "https://api.coingecko.com/api/v3/coins/markets" +
+  "?vs_currency=usd&order=market_cap_desc" +
+  "&per_page=100&page=1&sparkline=false" +
+  "&price_change_percentage=24h";
+
+let coins = [];
+
+const money = n => n == null
+  ? "N/D"
+  : new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      maximumSignificantDigits: 6
+    }).format(n);
+
+const compact = n => n == null
+  ? "N/D"
+  : "$" + new Intl.NumberFormat("en-US", {
+      notation: "compact",
+      maximumFractionDigits: 2
+    }).format(n);
+
+async function loadCoins() {
+  const status = document.getElementById("status");
+  status.textContent = "Consultando el mercado...";
+  document.getElementById("refresh").disabled = true;
+
+  try {
+    const response = await fetch(endpoint);
+    if (!response.ok) {
+      throw new Error("HTTP " + response.status);
+    }
+    coins = await response.json();
+    status.textContent =
+      "Datos recibidos. Última consulta: " +
+      new Date().toLocaleTimeString();
+    render();
+  } catch (error) {
+    status.textContent =
+      "No se pudieron cargar los datos. Comprueba Internet " +
+      "e inténtalo más tarde. Si persiste, puede haber un " +
+      "límite de solicitudes de la API.";
+    console.error(error);
+  } finally {
+    document.getElementById("refresh").disabled = false;
+  }
+}
+
+function render() {
+  const query = document.getElementById("search")
+    .value.trim().toLowerCase();
+  const min = Number(document.getElementById("minVolume").value);
+  const sort = document.getElementById("sort").value;
+
+  let filtered = coins.filter(c =>
+    (c.name.toLowerCase().includes(query) ||
+     c.symbol.toLowerCase().includes(query)) &&
+    (c.total_volume || 0) >= min
+  );
+
+  filtered.sort((a, b) => {
+    if (sort === "volume_desc")
+      return (b.total_volume || 0) - (a.total_volume || 0);
+    if (sort === "change_desc")
+      return (b.price_change_percentage_24h_in_currency || 0) -
+             (a.price_change_percentage_24h_in_currency || 0);
+    if (sort === "change_asc")
+      return (a.price_change_percentage_24h_in_currency || 0) -
+             (b.price_change_percentage_24h_in_currency || 0);
+    return (b.market_cap || 0) - (a.market_cap || 0);
+  });
+
+  document.getElementById("count").textContent =
+    filtered.length + " monedas encontradas en los datos cargados";
+
+  const tbody = document.getElementById("coins");
+  tbody.replaceChildren();
+
+  if (!filtered.length) {
+    tbody.innerHTML =
+      '<tr><td colspan="5">No hay resultados con esos filtros.</td></tr>';
+    return;
+  }
+
+  filtered.forEach(c => {
+    const change = c.price_change_percentage_24h_in_currency;
+    const tr = document.createElement("tr");
+    const name = document.createElement("td");
+    const link = document.createElement("a");
+    link.href = "https://www.coingecko.com/en/coins/" +
+      encodeURIComponent(c.id);
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = c.name + " (" + c.symbol.toUpperCase() + ")";
+    name.append(link);
+
+    const values = [
+      money(c.current_price),
+      change == null ? "N/D" : change.toFixed(2) + "%",
+      compact(c.total_volume),
+      compact(c.market_cap)
+    ];
+
+    tr.append(name);
+    values.forEach((value, i) => {
+      const td = document.createElement("td");
+      td.textContent = value;
+      if (i === 1 && change != null) {
+        td.className = change >= 0 ? "up" : "down";
+      }
+      tr.append(td);
+    });
+    tbody.append(tr);
+  });
+}
+
+document.getElementById("search").addEventListener("input", render);
+document.getElementById("sort").addEventListener("change", render);
+document.getElementById("minVolume").addEventListener("change", render);
+document.getElementById("refresh").addEventListener("click", loadCoins);
+
+loadCoins();
+</script>
+</body>
+</html>
